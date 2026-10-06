@@ -1,6 +1,6 @@
 import dash
 import dash_bootstrap_components as dbc
-from dash import Input, Output, State, dcc, html
+from dash import Input, Output, State, dcc, html  
 from dash.exceptions import PreventUpdate
 
 from app import app
@@ -41,7 +41,7 @@ layout = html.Div(
                                                 dbc.Col(
                                                     dbc.Input(
                                                         type='text',
-                                                        id='genre_namefilter',
+                                                        id='genre_titlefilter',
                                                         placeholder='Genre Title'
                                                     ),
                                                     width=5
@@ -51,7 +51,17 @@ layout = html.Div(
                                     )
                                 ),
                                 html.Div(
-                                    "Table with movies will go here.",
+                                    [
+                                        dbc.Checklist(
+                                            id='genre_deleted',
+                                            options= [dict(value=1, label="Show Deleted")],
+                                            value=[] 
+                                        )
+                                    ], 
+                                    id='genre_deletediv'
+                                ),
+                                html.Div(
+                                    "Table with genres will go here.",
                                     id='genre_genrelist'
                                 )
                             ]
@@ -63,51 +73,58 @@ layout = html.Div(
     ]
 )
 
-
 @app.callback(
     [
         Output('genre_genrelist', 'children'),
     ],
     [
         Input('url', 'pathname'),
-        Input('genre_namefilter', 'value'),
+        Input('genre_titlefilter', 'value'),
+        Input('genre_deleted', 'value'),
     ],
 )
-def updateRecordsTable(pathname, titlefilter):
-
+def updateRecordsTable(pathname, titlefilter, deleted):
+    
     if pathname == '/genres/genre_management':
-        pass
+        sql = """ SELECT genre_name, genre_id
+        FROM genres g
+        WHERE 1=1
+        """
+        val = []
+
+        if not deleted:
+            sql+= """ AND NOT genre_delete_ind """
+        
+        if titlefilter:
+            sql += """ AND genre_name ilike %s"""
+            val += [f'%{titlefilter}%']
+
+        col = ["Genre Title", 'id']
+
+        df = getDataFromDB(sql, val, col)
+
+        #print(df)
+
+        editButtons = []
+        for movie_id in df['id']:
+            editButtons += [
+                html.Div(
+                    dbc.Button("Edit", color='warning', size='sm', 
+                            href = f'/genres/genre_management_profile?mode=edit&id={movie_id}'),
+                    className='text-center'
+                )
+            ]
+        
+        df['Action'] = editButtons
+        
+        # we don't want to display the 'id' column -- let's exclude it
+        df = df[['Genre Title', 'Action']]
+
+        genre_table = dbc.Table.from_dataframe(df, striped=True, bordered=True,
+            hover=True, size='sm')
+
     else:
         raise PreventUpdate
-
-    sql = """ SELECT genre_name, 
-        genre_id
-    FROM genres
-    WHERE NOT genre_delete_ind
-    """
-    val = []
-
-    if titlefilter:
-        sql += """ AND genre_name ilike %s"""
-        val += [f'%{titlefilter}%']
-    
-    col = ["Genre Name", 'id']
-
-    df = getDataFromDB(sql, val, col)
-
-    df['Action'] = [
-        html.Div(
-            dbc.Button("Edit", color='warning', size='sm', 
-                        href = f"/genres/genre_management_profile?mode=edit&id={row['id']}"),
-            className='text-center'
-        ) for idx, row in df.iterrows()
-    ]
-    
-    # we don't want to display the 'id' column -- let's exclude it
-    df = df[['Genre Name', 'Action']]
-
-    genre_table = dbc.Table.from_dataframe(df, striped=True, bordered=True,
-                                        hover=True, size='sm')
 
     
     return [genre_table]

@@ -1,18 +1,17 @@
-from urllib.parse import parse_qs, urlparse
-
 import dash
 import dash_bootstrap_components as dbc
+import datetime as datetime
 from dash import Input, Output, State, dcc, html
 from dash.exceptions import PreventUpdate
 
 from app import app
 from apps.dbconnect import getDataFromDB, modifyDB
+from urllib.parse import urlparse, parse_qs
 
 layout = html.Div(
     [
-
         dcc.Store(id='genreprofile_genreid', storage_type='memory', data=0),
-        
+
         html.H2('Genre Details'), # Page Header
         html.Hr(),
         dbc.Alert(id='genreprofile_alert', is_open=False), # For feedback purposes
@@ -24,7 +23,7 @@ layout = html.Div(
                         dbc.Col(
                             dbc.Input(
                                 type='text', 
-                                id='genreprofile_name',
+                                id='genreprofile_title',
                                 placeholder="Title"
                             ),
                             width=5
@@ -32,49 +31,17 @@ layout = html.Div(
                     ],
                     className='mb-3'
                 ),
-                # dbc.Row(
-                #     [
-                #         dbc.Label("Genre", width=1),
-                #         dbc.Col(
-                #             html.Div(
-                #                 dcc.Dropdown(
-                #                     id='movieprofile_genre',
-                #                     placeholder='Genre'
-                #                 ),
-                #                 className='dash-bootstrap'
-                #             ),
-                #             width=5,
-                #         )
-                #     ],
-                #     className='mb-3'
-                # ),
-                # dbc.Row(
-                #     [
-                #         dbc.Label("Release Date", width=1),
-                #         dbc.Col(
-                #             dcc.DatePickerSingle(
-                #                 id='movieprofile_releasedate',
-                #                 placeholder='Release Date',
-                #                 month_format='MMM Do, YY',
-                #             ),
-                #             width=5, 
-                #             className='dash-bootstrap'
-                #         )
-                #     ],
-                #     className='mb-3'
-                # ),
-                html.Div(
-                    [
-                        dbc.Checklist(
-                            id='genreprofile_deleteind',
-                            options= [dict(value=1, label="Mark as Deleted")],
-                            value=[] 
-                        )
-                    ], 
-                    id='genreprofile_deletediv'
-                )
-
             ]
+        ),
+        html.Div(
+            [
+                dbc.Checklist(
+                    id='genreprofile_deleteind',
+                    options= [dict(value=1, label="Mark as Deleted")],
+                    value=[] 
+                )
+            ], 
+            id='genreprofile_deletediv'
         ),
           dbc.Button(
             'Submit',
@@ -84,7 +51,8 @@ layout = html.Div(
         dbc.Modal( # Modal = dialog box; feedback for successful saving.
             [
                 dbc.ModalHeader(
-                    html.H4('Save Success')
+                    html.H4('Save Success',
+                    id = 'genreprofile_successmodalheader')
                 ),
                 dbc.ModalBody(
                     'Message here! Edit me please!'
@@ -105,47 +73,28 @@ layout = html.Div(
 
 @app.callback(
     [
-        # Output('movieprofile_genre', 'options'),
         Output('genreprofile_genreid', 'data'),
         Output('genreprofile_deletediv', 'className')
     ],
     [
-        Input('url', 'pathname'),
+        Input('url', 'pathname')
     ],
     [
-        State('url', 'search'),
+        State('url','search')
     ]
 )
-def movieprofile_populategenres(pathname, urlsearch):
+def genreprofile_populategenres(pathname, urlsearch):
     if pathname == '/genres/genre_management_profile':
-        # sql = """
-        # SELECT genre_name as label, genre_id as value
-        # FROM genres 
-        # WHERE genre_delete_ind = False
-        # """
-        # values = []
-        # cols = ['label', 'value']
-
-        # df = getDataFromDB(sql, values, cols)
-        # # The output must be a dictionary with the following structure
-        # # options=[
-        # #     {'label': "Factorial", 'value': 1},
-        # #     {'label': "Palindrome Checker", 'value': 2},
-        # #     {'label': "Greeter", 'value': 3},
-        # # ]
-
-        # genre_options = df.to_dict('records')
-
         parsed = urlparse(urlsearch)
         create_mode = parse_qs(parsed.query)['mode'][0]
-        
+
         if create_mode == 'add':
             genreid = 0
             deletediv = 'd-none'
         else:
             genreid = int(parse_qs(parsed.query)['id'][0])
-            deletediv = ''
-        
+            deletediv= ''
+
         return [genreid, deletediv]
     else:
         raise PreventUpdate
@@ -158,7 +107,8 @@ def movieprofile_populategenres(pathname, urlsearch):
         Output('genreprofile_alert', 'children'),
         Output('genreprofile_alert', 'is_open'),
         # dbc.Modal Properties
-        Output('genreprofile_successmodal', 'is_open')
+        Output('genreprofile_successmodal', 'is_open'),
+        Output('genreprofile_successmodalheader', 'children')
     ],
     [
         # For buttons, the property n_clicks 
@@ -168,93 +118,92 @@ def movieprofile_populategenres(pathname, urlsearch):
         # The values of the fields are States 
         # They are required in this process but they 
         # do not trigger this callback
-        State('genreprofile_name', 'value'),
-        # State('movieprofile_genre', 'value'),
-        # State('movieprofile_releasedate', 'date'),
-
+        State('genreprofile_title', 'value'),
         State('url', 'search'),
         State('genreprofile_genreid', 'data'),
-        State('genreprofile_deleteind', 'value'),
+        State('genreprofile_deleteind', 'value')
     ]
 )
-def movieprofile_saveprofile(submitbtn, title, urlsearch, 
-                             genreid, deleteind):
+def genreprofile_saveprofile(submitbtn, title, urlsearch, genreid, delete):
     ctx = dash.callback_context
     # The ctx filter -- ensures that only a change in url will activate this callback
     if ctx.triggered:
         eventid = ctx.triggered[0]['prop_id'].split('.')[0]
+        if eventid == 'genreprofile_submit' and submitbtn:
+            # the submitbtn condition checks if the callback was indeed activated by a click
+            # and not by having the submit button appear in the layout
+            parsed = urlparse(urlsearch)
+            # get the corresponding value for 'mode' from the URL
+            create_mode = parse_qs(parsed.query)['mode'][0]
+            # Set default outputs
+            alert_open = False
+            modal_open = False
+            alert_color = ''
+            alert_text = ''
 
-        parsed = urlparse(urlsearch)
-        create_mode = parse_qs(parsed.query)['mode'][0]
+            # We need to check inputs
+            if not title: # If title is blank, not title = True
+                alert_open = True
+                alert_color = 'danger'
+                alert_text = 'Check your inputs. Please supply the genre title.'
+        
+            else: # all inputs are valid
+                # Add the data into the db
+                if create_mode == 'add':
+                    title = title.strip()
+                    check_sql = '''
+                        SELECT genre_id 
+                        FROM genres 
+                        WHERE LOWER(genre_name) = LOWER(%s) 
+                            AND genre_delete_ind = False
+                        '''
+                    duplicate_df = getDataFromDB(check_sql,[title],['genre_id'])
+
+                    if not duplicate_df.empty:
+                        alert_open = True
+                        alert_color = 'warning'
+                        alert_text = f"The genre '{title}' already exists."
+                        return [alert_color,alert_text,alert_open,modal_open, msg]
+
+                    # insert values when no duplicates and data is valid
+                    sql = '''
+                        INSERT INTO genres (genre_name,
+                            genre_delete_ind)
+                        VALUES (%s, %s)
+                    '''
+                    values = [title, False]
+                    msg = "Save Success"
+                elif create_mode == 'edit':
+                    sql = '''
+                        UPDATE genres 
+                        SET 
+                            genre_name = %s,
+                            genre_delete_ind = %s,
+                            genre_modified_on = %s
+                        WHERE
+                            genre_id = %s
+                    '''
+                    values = [title.strip(), bool(delete), datetime.datetime.now(), genreid]
+                    msg = "Update Success"
+                else:
+                    raise PreventUpdate
+                
+                modifyDB(sql, values)
+
+                # If this is successful, we want the successmodal to show
+                modal_open = True
+            return [alert_color, alert_text, alert_open, modal_open, msg]
+
+        else: 
+            raise PreventUpdate
 
     else:
         raise PreventUpdate
 
-    if eventid == 'genreprofile_submit' and submitbtn:
-        # the submitbtn condition checks if the callback was indeed activated by a click
-        # and not by having the submit button appear in the layout
-
-        # Set default outputs
-        alert_open = False
-        modal_open = False
-        alert_color = ''
-        alert_text = ''
-
-        # We need to check inputs
-        if not title: # If title is blank, not title = True
-            alert_open = True
-            alert_color = 'danger'
-            alert_text = 'Check your inputs. Please supply the movie title.'
-        # elif not genre:
-        #     alert_open = True
-        #     alert_color = 'danger'
-        #     alert_text = 'Check your inputs. Please supply the movie genre.'
-        # elif not releasedate:
-        #     alert_open = True
-        #     alert_color = 'danger'
-        #     alert_text = 'Check your inputs. Please supply the movie release date.'
-        else: # all inputs are valid
-            # Add the data into the db
-
-            if create_mode == 'add':
-                sql = '''
-                    INSERT INTO genres (genre_name)
-                    VALUES (%s)
-                '''
-                values = [title]
-
-            elif create_mode == 'edit':
-                sql = '''
-                    UPDATE genres 
-                    SET 
-                        genre_name = %s,
-                        genre_delete_ind = %s
-                    WHERE
-                        genre_id = %s
-                '''
-                values = [title, 
-                          bool(deleteind),
-                          genreid]
-
-            else:
-                raise PreventUpdate
-
-            modifyDB(sql, values)
-
-            # If this is successful, we want the successmodal to show
-            modal_open = True
-
-        return [alert_color, alert_text, alert_open, modal_open]
-
-    else: 
-        raise PreventUpdate
-
-
 @app.callback(
     [
-        Output('genreprofile_name', 'value'),
-        # Output('movieprofile_genre', 'value'),
-        # Output('movieprofile_releasedate', 'date'),
+        Output('genreprofile_title', 'value'),
+        Output('genreprofile_deleteind', 'value'),
     ],
     [
         Input('genreprofile_genreid', 'modified_timestamp')
@@ -263,32 +212,43 @@ def movieprofile_saveprofile(submitbtn, title, urlsearch,
         State('genreprofile_genreid', 'data'),
     ]
 )
-def movieprofile_loadprofile(timestamp, genreid):
+def genreprofile_loadprofile(timestamp, genreid):
     if genreid: # check if genreid > 0
 
         # Query from db
         sql = """
-            SELECT genre_name
+            SELECT genre_name, genre_delete_ind
             FROM genres
             WHERE genre_id = %s
         """
         values = [genreid]
-        # col = ['genre_name', 'genreid', 'releasedate']
-        col = ['genre_name']
+        col = ['genrename', 'deleted']
 
         df = getDataFromDB(sql, values, col)
 
-        if not df.empty:
-            genrename=df['genre_name'][0]
-            return[genrename]
-        # genrename = df['genrename'][0]
-        # # Our dropdown list has the genreids as values then it will 
-        # # display the correspoinding labels
-        
-        # genreid = int(df['genreid'][0])
-        # # releasedate = df['releasedate'][0]
+        genrename = df['genrename'][0]
 
-        # return [genrename, genreid]
+        deleted = [] if df['deleted'][0] == 0 else [1]
+        print('test')
+        return [genrename, deleted]
 
     else:
         raise PreventUpdate
+
+
+@app.callback(
+    [
+        Output('genreprofile_submit', 'color'),
+    ],
+    [
+        Input('genreprofile_deleteind', 'value')
+    ],
+    [
+        
+    ]
+)
+def genreprofile_deletwarn(delete):
+    if delete:
+        return ['danger']
+    else:
+        return ['primary']
